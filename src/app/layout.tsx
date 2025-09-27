@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
+import Script from 'next/script';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -24,7 +25,20 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en'>
-      <body>
+      <head>
+        {/* Define isSpace function globally to fix markdown-it issues with Next.js + Turbopack */}
+        <Script id='markdown-it-fix' strategy='beforeInteractive'>
+          {`
+            if (typeof window !== 'undefined' && typeof window.isSpace === 'undefined') {
+              window.isSpace = function(code) {
+                return code === 0x20 || code === 0x09 || code === 0x0A || code === 0x0B || code === 0x0C || code === 0x0D;
+              };
+            }
+          `}
+        </Script>
+      </head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased h-screen`}>
         <AntdRegistry>{children}</AntdRegistry>
       </body>
     </html>

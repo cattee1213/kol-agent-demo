@@ -21,6 +21,31 @@
 
 * {
   box-sizing: border-box;
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+
+  /* WebKit */
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+  }
+
+  /* Show a subtle thumb on hover for usability */
+  &:hover {
+    scrollbar-color: color-mix(in oklab, var(--foreground) 30%, transparent)
+      transparent;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--foreground) 30%, transparent);
+  }
 }
 
 body {
