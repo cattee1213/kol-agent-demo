@@ -1,17 +1,17 @@
 'use client';
 import { Welcome, Bubble, Sender } from '@ant-design/x';
 import { useState } from 'react';
-import markdownit from 'markdown-it';
+import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 
 export default function HomePage() {
-  const md: any = markdownit({
+  const md: MarkdownIt = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true,
     breaks: true,
-    highlight: function (str, lang) {
+    highlight: function (str, lang, attrs) {
       if (lang && hljs.getLanguage(lang)) {
         try {
           return (
