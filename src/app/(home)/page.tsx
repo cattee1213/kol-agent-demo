@@ -1,6 +1,7 @@
 'use client';
 import { Welcome, Bubble, Sender } from '@ant-design/x';
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
@@ -138,13 +139,23 @@ function ChatArea() {
       setLoading(false);
     }, 2000);
   }
-
   async function cancelHandle() {
     console.log('cancel');
     setLoading(false);
   }
 
-  const rolesAsObject: any = {
+  type TypingConfig = {
+    step: number;
+    interval: number;
+  };
+
+  type RoleConfig = {
+    placement: 'start' | 'end';
+    typing?: TypingConfig;
+    style?: CSSProperties;
+  };
+
+  const rolesAsObject: Record<ChatRole, RoleConfig> = {
     ai: {
       placement: 'start',
       typing: { step: 5, interval: 20 },
