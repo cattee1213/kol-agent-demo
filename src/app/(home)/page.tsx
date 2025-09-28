@@ -1,16 +1,35 @@
 'use client';
+import { Select } from 'antd';
 import { Welcome, Bubble, Sender } from '@ant-design/x';
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
+import { Typography } from 'antd';
 type ApiResponse = {
   success: boolean;
-  data?: string | object;
+  data: { content: string; agentName: string } | string | object;
   result: number;
   text: string;
 };
+
+const stockList = [
+  { value: '000039.SZ', label: '中集集团' },
+  { value: '000042.SZ', label: '中洲控股' },
+  { value: '000045.SZ', label: '深纺织A' },
+  { value: '000048.SZ', label: '京基智农' },
+  { value: '000049.SZ', label: '德赛电池' },
+  { value: '000050.SZ', label: '深天马A' },
+  { value: '000055.SZ', label: '方大集团' },
+  { value: '000056.SZ', label: '皇庭国际' },
+  { value: '000058.SZ', label: '深赛格' },
+  { value: '000059.SZ', label: '华锦股份' },
+  { value: '000060.SZ', label: '中金岭南' },
+  { value: '000061.SZ', label: '农产品' },
+  { value: '000062.SZ', label: '深圳华强' },
+  { value: '000063.SZ', label: '中兴通讯' }
+];
 
 export default function HomePage() {
   async function fetchAgent() {
@@ -24,7 +43,6 @@ export default function HomePage() {
   const md: MarkdownIt = new MarkdownIt({
     html: true,
     linkify: true,
-    typographer: true,
     breaks: true,
     highlight: function (str, lang, attrs) {
       if (lang && hljs.getLanguage(lang)) {
@@ -37,14 +55,48 @@ export default function HomePage() {
           );
         } catch (__) {}
       }
-
       return (
         '<pre><code class="hljs">' + md.utils.escapeHtml(str) + '</code></pre>'
       );
     }
   });
 
+  // 为表格添加样式与滚动容器，并保留 markdown-it 生成的原有属性（如对齐）
+  md.renderer.rules.table_open = (tokens, idx, options, env, self) => {
+    const attrs = self.renderAttrs(tokens[idx]) || '';
+    return `<div class="md-table-wrapper overflow-x-auto my-4"><table class="w-full table-auto border-collapse"${attrs}>`;
+  };
+  md.renderer.rules.table_close = () => {
+    return '</table></div>';
+  };
+  md.renderer.rules.thead_open = () => {
+    return '<thead class="bg-slate-50 dark:bg-slate-800">';
+  };
+  md.renderer.rules.th_open = (tokens, idx, options, env, self) => {
+    const attrs = self.renderAttrs(tokens[idx]) || '';
+    return `<th class="border border-slate-200 dark:border-slate-700 px-3 py-2 text-slate-700 dark:text-slate-200 font-semibold"${attrs}>`;
+  };
+  md.renderer.rules.td_open = (tokens, idx, options, env, self) => {
+    const attrs = self.renderAttrs(tokens[idx]) || '';
+    return `<td class="border border-slate-200 dark:border-slate-700 px-3 py-2 align-top"${attrs}>`;
+  };
+  md.renderer.rules.tbody_open = () => {
+    // 斑马纹（可选）
+    return '<tbody class="[&>tr:nth-child(odd)>td]:bg-slate-50 dark:[&>tr:nth-child(odd)>td]:bg-slate-900/40">';
+  };
+
+  const [hasAgent, setHasAgent] = useState<boolean>(false);
+  const [agentName, setAgentName] = useState<string>('');
   function WelcomeCard() {
+    if (hasAgent) {
+      return (
+        <Welcome
+          className='text-center'
+          title={`Your Agent: ${agentName}`}
+          description='You have already created an agent, feel free to chat!'
+        />
+      );
+    }
     return (
       <Welcome
         className='text-center'
@@ -56,6 +108,7 @@ export default function HomePage() {
 
   const [userPrompt, setUserPrompt] = useState('');
   async function chooseFileHandle() {
+    let fileName = '';
     const fileInput = document.querySelector(
       'input[type="file"]'
     ) as HTMLInputElement;
@@ -67,6 +120,7 @@ export default function HomePage() {
         const form = new FormData();
         for (const f of files) {
           form.append('file', f, f.name); // 与后端转发字段一致
+          fileName = f.name;
         }
 
         setUserPrompt('正在上传文件到服务器，请稍候...');
@@ -82,9 +136,19 @@ export default function HomePage() {
             setUserPrompt(`上传失败：${res.status} ${msg}`);
             return;
           }
-
+          setUserPrompt('文件上传成功，正在生成 Agent，请稍候...');
+          await fetch('/api/create-agent-prompt', {
+            method: 'POST',
+            body: JSON.stringify({ filename: fileName })
+          });
           const agentData = await fetchAgent();
-          setUserPrompt(agentData.data as string);
+          setHasAgent(true);
+          setAgentName(
+            (agentData.data as { content: string; agentName: string }).agentName
+          );
+          setUserPrompt(
+            (agentData.data as { content: string; agentName: string }).content
+          );
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           setUserPrompt(`上传异常：${msg}`);
@@ -97,14 +161,27 @@ export default function HomePage() {
   }
 
   function mdRender() {
-    return <div dangerouslySetInnerHTML={{ __html: md.render(userPrompt) }} />;
+    return (
+      <Typography>
+        <div
+          className='markdown-body'
+          dangerouslySetInnerHTML={{ __html: md.render(userPrompt) }}
+        />
+      </Typography>
+    );
   }
 
   useEffect(() => {
     // 初始化欢迎语
-    fetchAgent().then((data) => {
-      if (data) {
-        setUserPrompt(data.data as string);
+    fetchAgent().then((res) => {
+      if (res.data) {
+        setHasAgent(true);
+        setAgentName(
+          (res.data as { content: string; agentName: string }).agentName
+        );
+        setUserPrompt(
+          (res.data as { content: string; agentName: string }).content
+        );
       } else {
         setUserPrompt(
           '欢迎使用 Agent 聊天系统，请上传文件生成您的专属 Agent！'
@@ -112,6 +189,181 @@ export default function HomePage() {
       }
     });
   }, []);
+
+  function ChatArea() {
+    const [value, setValue] = useState<string>('');
+    const [loading, setLoading] = useState<boolean>(false);
+
+    type ChatRole = 'ai' | 'user';
+    type ConversationItem = {
+      id: string;
+      role: ChatRole;
+      content: string;
+      loading: boolean;
+      messageRender?: () => React.ReactNode;
+      typing: boolean;
+    };
+
+    const [conversationList, setConversationList] = useState<
+      ConversationItem[]
+    >([]);
+    async function submitHandle(value: string) {
+      setValue('');
+      setLoading(true);
+      setConversationList((prev) => [
+        ...prev,
+        {
+          id: conversationList.length.toString(),
+          role: 'user',
+          content:
+            '已选择：' +
+            stockList.find((item) => item.value === stock)?.label +
+            '，' +
+            value,
+          loading: false,
+          typing: false
+        }
+      ]);
+      setConversationList((prev) => [
+        ...prev,
+        {
+          id: conversationList.length.toString(),
+          role: 'ai',
+          content: '',
+          loading: true,
+          typing: true
+        }
+      ]);
+      const response = await fetch(
+        'https://www.omahaaigc.com/api/FileTest/ExecutionAgent',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ tscode: stock, agentName })
+        }
+      );
+      if (!response.ok) {
+        console.error('ReadableStream is not available on this response.');
+        setLoading(false);
+        return;
+      }
+      const responseReal = await fetch(
+        'https://www.omahaaigc.com/api/FileTest/GetResult',
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      const dataReal: ApiResponse = await responseReal.json();
+      const result = JSON.parse(dataReal.data as string);
+      const fs = (result as any)?.final_summary;
+      let summaryText = '';
+      try {
+        if (typeof fs === 'string') {
+          summaryText = fs;
+        } else if (fs?.type === 'Buffer' && Array.isArray(fs.data)) {
+          summaryText = new TextDecoder('utf-8').decode(
+            Uint8Array.from(fs.data)
+          );
+        } else if (fs instanceof ArrayBuffer) {
+          summaryText = new TextDecoder('utf-8').decode(new Uint8Array(fs));
+        } else if (Array.isArray(fs)) {
+          summaryText = new TextDecoder('utf-8').decode(Uint8Array.from(fs));
+        } else {
+          summaryText = String(fs ?? '');
+        }
+      } catch {
+        summaryText = String(fs ?? '');
+      }
+      console.log(summaryText);
+      const newItem: ConversationItem = {
+        id: conversationList.length.toString(),
+        role: 'ai',
+        content: summaryText,
+        loading: false,
+        typing: false,
+        messageRender: () => (
+          <Typography>
+            <div
+              className='markdown-body'
+              dangerouslySetInnerHTML={{ __html: md.render(summaryText) }}
+            />
+          </Typography>
+        )
+      };
+      setConversationList((prev) => [
+        ...prev.filter((item) => !item.loading),
+        newItem
+      ]);
+      setLoading(false);
+    }
+    async function cancelHandle() {
+      console.log('cancel');
+      setLoading(false);
+    }
+
+    type TypingConfig = {
+      step: number;
+      interval: number;
+    };
+
+    type RoleConfig = {
+      placement: 'start' | 'end';
+      typing?: TypingConfig;
+      style?: CSSProperties;
+    };
+
+    const rolesAsObject: Record<ChatRole, RoleConfig> = {
+      ai: {
+        placement: 'start',
+        typing: { step: 5, interval: 20 },
+        style: {
+          maxWidth: 600
+        }
+      },
+      user: {
+        placement: 'end'
+      }
+    };
+
+    const [stock, setStock] = useState<string>('000039.SZ');
+    function stockSelectHandle(value: string) {
+      setStock(value);
+    }
+    return (
+      <div className='flex-1 h-full flex flex-col gap-4 border-2  border-indigo-200 boder-solid rounded-2xl p-5'>
+        <div className='flex-1 overflow-y-auto'>
+          <Bubble.List roles={rolesAsObject} items={conversationList} />
+        </div>
+
+        <div className='flex items-center gap-4'>
+          <Select
+            placeholder='选择一只股票'
+            onChange={stockSelectHandle}
+            options={stockList}
+            className='w-[200px]'>
+            <Select.Option value='sample'>Sample</Select.Option>
+          </Select>
+          <Sender
+            loading={loading}
+            value={value}
+            onChange={(v) => {
+              setValue(v);
+            }}
+            onSubmit={submitHandle}
+            onCancel={cancelHandle}
+            submitType='shiftEnter'
+            placeholder='Press Shift + Enter to send message'
+            autoSize={{ minRows: 2, maxRows: 6 }}
+          />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className='flex h-full p-5 gap-4'>
       <div className='flex flex-col h-full w-[500px] gap-4'>
@@ -129,104 +381,6 @@ export default function HomePage() {
         </div>
       </div>
       <ChatArea />
-    </div>
-  );
-}
-
-function ChatArea() {
-  const [value, setValue] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-
-  type ChatRole = 'ai' | 'user';
-  type ConversationItem = {
-    id: string;
-    role: ChatRole;
-    content: string;
-    loading: boolean;
-  };
-
-  const [conversationList, setConversationList] = useState<ConversationItem[]>(
-    []
-  );
-  async function submitHandle(value: string) {
-    setValue('');
-    setLoading(true);
-    setConversationList((prev) => [
-      ...prev,
-      {
-        id: conversationList.length.toString(),
-        role: 'user',
-        content: value,
-        loading: false
-      }
-    ]);
-    setConversationList((prev) => [
-      ...prev,
-      {
-        id: conversationList.length.toString(),
-        role: 'ai',
-        content: '',
-        loading: true
-      }
-    ]);
-    setTimeout(() => {
-      setConversationList((prev) => {
-        const newList = [...prev];
-        newList[newList.length - 1] = {
-          ...newList[newList.length - 1],
-          content: '这是AI的回复'.repeat(10),
-          loading: false
-        };
-        return newList;
-      });
-      setLoading(false);
-    }, 2000);
-  }
-  async function cancelHandle() {
-    console.log('cancel');
-    setLoading(false);
-  }
-
-  type TypingConfig = {
-    step: number;
-    interval: number;
-  };
-
-  type RoleConfig = {
-    placement: 'start' | 'end';
-    typing?: TypingConfig;
-    style?: CSSProperties;
-  };
-
-  const rolesAsObject: Record<ChatRole, RoleConfig> = {
-    ai: {
-      placement: 'start',
-      typing: { step: 5, interval: 20 },
-      style: {
-        maxWidth: 600
-      }
-    },
-    user: {
-      placement: 'end'
-    }
-  };
-  return (
-    <div className='flex-1 h-full flex flex-col gap-4 border-2  border-indigo-200 boder-solid rounded-2xl p-5'>
-      <div className='flex-1 overflow-y-auto'>
-        <Bubble.List roles={rolesAsObject} items={conversationList} />
-      </div>
-      <Sender
-        loading={loading}
-        value={value}
-        onChange={(v) => {
-          setValue(v);
-        }}
-        onSubmit={submitHandle}
-        onCancel={cancelHandle}
-        submitType='shiftEnter'
-        placeholder='Press Shift + Enter to send message'
-        autoSize={{ minRows: 2, maxRows: 6 }}
-      />
     </div>
   );
 }
