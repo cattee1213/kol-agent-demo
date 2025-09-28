@@ -258,14 +258,28 @@ export default function HomePage() {
           }
         }
       );
+
+      type BufferLike = { type: 'Buffer'; data: number[] };
+      type ExecutionResult = { final_summary?: unknown };
+      function isBufferLike(v: unknown): v is BufferLike {
+        return (
+          typeof v === 'object' &&
+          v !== null &&
+          'type' in v &&
+          (v as { type: unknown }).type === 'Buffer' &&
+          'data' in v &&
+          Array.isArray((v as { data: unknown }).data)
+        );
+      }
+
       const dataReal: ApiResponse = await responseReal.json();
-      const result = JSON.parse(dataReal.data as string);
-      const fs = (result as any)?.final_summary;
+      const result = JSON.parse(dataReal.data as string) as ExecutionResult;
+      const fs = result?.final_summary;
       let summaryText = '';
       try {
         if (typeof fs === 'string') {
           summaryText = fs;
-        } else if (fs?.type === 'Buffer' && Array.isArray(fs.data)) {
+        } else if (isBufferLike(fs)) {
           summaryText = new TextDecoder('utf-8').decode(
             Uint8Array.from(fs.data)
           );
