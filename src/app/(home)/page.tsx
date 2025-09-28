@@ -1,12 +1,26 @@
 'use client';
 import { Welcome, Bubble, Sender } from '@ant-design/x';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
+type ApiResponse = {
+  success: boolean;
+  data?: string | object;
+  result: number;
+  text: string;
+};
 
 export default function HomePage() {
+  async function fetchAgent() {
+    const res = await fetch('/api/get-agent', {
+      method: 'GET'
+    });
+    const data: ApiResponse = await res.json();
+    return data;
+  }
+
   const md: MarkdownIt = new MarkdownIt({
     html: true,
     linkify: true,
@@ -41,34 +55,63 @@ export default function HomePage() {
   }
 
   const [userPrompt, setUserPrompt] = useState('');
-
   async function chooseFileHandle() {
-    // const fileInput = document.querySelector(
-    //   'input[type="file"]'
-    // ) as HTMLInputElement;
-    // fileInput.click();
-    const response = await fetch('/api/generate-agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await response.json();
+    const fileInput = document.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    fileInput.click();
+    fileInput.onchange = async () => {
+      if (fileInput.files) {
+        const files = Array.from(fileInput.files);
 
-    // 模拟打字
-    setInterval(() => {
-      setUserPrompt((prev) => {
-        if (prev.length < data.data.length) {
-          return data.data.slice(0, prev.length + 1);
-        } else {
-          return prev;
+        const form = new FormData();
+        for (const f of files) {
+          form.append('file', f, f.name); // 与后端转发字段一致
         }
-      });
-    });
+
+        setUserPrompt('正在上传文件到服务器，请稍候...');
+        try {
+          const res = await fetch('/api/update-file', {
+            method: 'POST',
+            body: form
+          });
+
+          const ct = res.headers.get('content-type') || '';
+          if (!res.ok) {
+            const msg = await res.text().catch(() => '');
+            setUserPrompt(`上传失败：${res.status} ${msg}`);
+            return;
+          }
+
+          const agentData = await fetchAgent();
+          setUserPrompt(agentData.data as string);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setUserPrompt(`上传异常：${msg}`);
+        } finally {
+          // 允许重复选择同一文件
+          fileInput.value = '';
+        }
+      }
+    };
   }
 
   function mdRender() {
     return <div dangerouslySetInnerHTML={{ __html: md.render(userPrompt) }} />;
   }
 
+  useEffect(() => {
+    // 初始化欢迎语
+    fetchAgent().then((data) => {
+      if (data) {
+        setUserPrompt(data.data as string);
+      } else {
+        setUserPrompt(
+          '欢迎使用 Agent 聊天系统，请上传文件生成您的专属 Agent！'
+        );
+      }
+    });
+  }, []);
   return (
     <div className='flex h-full p-5 gap-4'>
       <div className='flex flex-col h-full w-[500px] gap-4'>
@@ -78,7 +121,7 @@ export default function HomePage() {
             <Bubble messageRender={mdRender} content={userPrompt} />
           )}
         </div>
-        <input type='file' className='hidden' />
+        <input type='file' className='hidden' multiple />
         <div
           onClick={chooseFileHandle}
           className='cursor-pointer rounded-xl h-[50px] w-full flex justify-center items-center text-xl bg-indigo-200 font-bold text-indigo-900'>
