@@ -1,7 +1,7 @@
 'use client';
-import { Select } from 'antd';
+import { Modal, Input } from 'antd';
 import { Welcome, Bubble, Sender } from '@ant-design/x';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
@@ -44,7 +44,7 @@ export default function HomePage() {
     html: true,
     linkify: true,
     breaks: true,
-    highlight: function (str, lang, attrs) {
+    highlight: function (str, lang) {
       if (lang && hljs.getLanguage(lang)) {
         try {
           return (
@@ -53,7 +53,7 @@ export default function HomePage() {
               .value +
             '</code></pre>'
           );
-        } catch (__) {}
+        } catch {}
       }
       return (
         '<pre><code class="hljs">' + md.utils.escapeHtml(str) + '</code></pre>'
@@ -129,8 +129,6 @@ export default function HomePage() {
             method: 'POST',
             body: form
           });
-
-          const ct = res.headers.get('content-type') || '';
           if (!res.ok) {
             const msg = await res.text().catch(() => '');
             setUserPrompt(`上传失败：${res.status} ${msg}`);
@@ -215,11 +213,7 @@ export default function HomePage() {
         {
           id: conversationList.length.toString(),
           role: 'user',
-          content:
-            '已选择：' +
-            stockList.find((item) => item.value === stock)?.label +
-            '，' +
-            value,
+          content: '已选择：' + (stockName || stock) + '，' + value,
           loading: false,
           typing: false
         }
@@ -345,8 +339,105 @@ export default function HomePage() {
     };
 
     const [stock, setStock] = useState<string>('000039.SZ');
-    function stockSelectHandle(value: string) {
-      setStock(value);
+    const [stockName, setStockName] = useState<string>(
+      stockList.find((s) => s.value === '000039.SZ')?.label || ''
+    );
+
+    // 搜索 Modal 状态
+    const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+    const [query, setQuery] = useState<string>('');
+    const [searching, setSearching] = useState<boolean>(false);
+    type StockItem = { code: string; name: string };
+    const [results, setResults] = useState<StockItem[]>([]);
+    const [searchError, setSearchError] = useState<string>('');
+
+    // 映射后端返回对象到 { code, name }
+    const fetchStocks = useCallback(async (key: string) => {
+      if (!key.trim()) {
+        setResults([]);
+        setSearchError('');
+        return;
+      }
+      setSearching(true);
+      setSearchError('');
+      try {
+        const resp = await fetch(
+          `https://www.omahaaigc.com/api/StockBaseInfo/GetListByName?key=${encodeURIComponent(
+            key
+          )}`,
+          { method: 'GET' }
+        );
+        if (!resp.ok) {
+          const msg = await resp.text().catch(() => '');
+          throw new Error(`${resp.status}: ${msg}`);
+        }
+        const data: unknown = await resp.json();
+        // 兼容 ApiResponse 或直接数组
+        const list = Array.isArray(data)
+          ? data
+          : typeof data === 'object' &&
+            data !== null &&
+            Array.isArray((data as { data?: unknown }).data)
+          ? ((data as { data?: unknown }).data as unknown[])
+          : [];
+        const mapped: StockItem[] = list
+          .map((it: unknown) => {
+            if (typeof it === 'object' && it !== null) {
+              const o = it as Record<string, unknown>;
+              const codeCandidate =
+                o['ts_code'] ||
+                o['tsCode'] ||
+                o['TSCode'] ||
+                o['tscode'] ||
+                o['code'] ||
+                o['symbol'] ||
+                '';
+              const nameCandidate =
+                o['name'] ||
+                o['stockName'] ||
+                o['StockName'] ||
+                o['cname'] ||
+                o['cnName'] ||
+                o['security_name_abbr'] ||
+                codeCandidate ||
+                '';
+              return {
+                code: String(codeCandidate),
+                name: String(nameCandidate)
+              };
+            }
+            return { code: '', name: '' };
+          })
+          .filter((it: StockItem) => it.code);
+        setResults(mapped);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : '搜索失败';
+        setSearchError(msg);
+      } finally {
+        setSearching(false);
+      }
+    }, []);
+
+    // keyup 防抖搜索
+    useEffect(() => {
+      if (!isSearchOpen) return;
+      const handle = setTimeout(() => {
+        void fetchStocks(query);
+      }, 300);
+      return () => clearTimeout(handle);
+    }, [query, isSearchOpen, fetchStocks]);
+
+    function openSearch() {
+      setIsSearchOpen(true);
+      setQuery('');
+      setResults([]);
+      setSearchError('');
+    }
+
+    function onPickStock(item: { code: string; name: string }) {
+      setStock(item.code);
+      setStockName(item.name || item.code);
+      setIsSearchOpen(false);
     }
     return (
       <div className='flex-1 h-full flex flex-col gap-4 border-2  border-indigo-200 boder-solid rounded-2xl p-5'>
@@ -355,13 +446,12 @@ export default function HomePage() {
         </div>
 
         <div className='flex items-center gap-4'>
-          <Select
-            placeholder='选择一只股票'
-            onChange={stockSelectHandle}
-            options={stockList}
-            className='w-[200px]'>
-            <Select.Option value='sample'>Sample</Select.Option>
-          </Select>
+          <button
+            type='button'
+            onClick={openSearch}
+            className='px-3 py-2 rounded-md bg-indigo-100 text-indigo-900 border border-indigo-200 hover:bg-indigo-200 w-[220px] text-left'>
+            {stockName ? `${stockName} (${stock})` : '选择股票'}
+          </button>
           <Sender
             loading={loading}
             value={value}
@@ -375,6 +465,46 @@ export default function HomePage() {
             autoSize={{ minRows: 2, maxRows: 6 }}
           />
         </div>
+
+        <Modal
+          open={isSearchOpen}
+          onCancel={() => setIsSearchOpen(false)}
+          footer={null}
+          title='搜索股票（输入名称或代码，按键即搜）'
+          centered>
+          <div className='flex flex-col gap-3'>
+            <Input
+              placeholder='例如：中兴、招商银行、000063.SZ'
+              allowClear
+              onKeyUp={(e) => setQuery((e.target as HTMLInputElement).value)}
+            />
+            <div className='max-h-80 overflow-y-auto border rounded-md'>
+              {searching ? (
+                <div className='p-4 text-center text-slate-500'>搜索中...</div>
+              ) : searchError ? (
+                <div className='p-4 text-center text-red-500'>
+                  {searchError}
+                </div>
+              ) : results.length === 0 ? (
+                <div className='p-4 text-center text-slate-400'>无结果</div>
+              ) : (
+                <ul>
+                  {results.map((it) => (
+                    <li
+                      key={`${it.code}-${it.name}`}
+                      className='px-3 py-2 cursor-pointer hover:bg-indigo-50 flex justify-between items-center'
+                      onClick={() => onPickStock(it)}>
+                      <span className='font-medium text-slate-800'>
+                        {it.name}
+                      </span>
+                      <span className='text-slate-500'>{it.code}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </Modal>
       </div>
     );
   }
