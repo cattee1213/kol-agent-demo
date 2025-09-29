@@ -2,7 +2,7 @@
 import { Modal, Input } from 'antd';
 import { Welcome, Bubble, Sender } from '@ant-design/x';
 import { useEffect, useState, useCallback } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, JSX } from 'react';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
@@ -45,6 +45,17 @@ export default function HomePage() {
       );
     }
   });
+
+  const mdRender = useCallback((content: string): JSX.Element => {
+    return (
+      <Typography>
+        <div
+          className='markdown-body'
+          dangerouslySetInnerHTML={{ __html: md.render(content) }}
+        />
+      </Typography>
+    );
+  }, []);
 
   // 为表格添加样式与滚动容器，并保留 markdown-it 生成的原有属性（如对齐）
   md.renderer.rules.table_open = (tokens, idx, options, env, self) => {
@@ -143,17 +154,6 @@ export default function HomePage() {
     };
   }
 
-  function mdRender(content: string) {
-    return (
-      <Typography>
-        <div
-          className='markdown-body'
-          dangerouslySetInnerHTML={{ __html: md.render(content) }}
-        />
-      </Typography>
-    );
-  }
-
   useEffect(() => {
     // 初始化欢迎语
     fetchAgent().then((res) => {
@@ -183,8 +183,8 @@ export default function HomePage() {
       role: ChatRole;
       content: string;
       loading: boolean;
-      messageRender?: () => React.ReactNode;
       typing: boolean | { step: number; interval: number };
+      messageRender?: (content: string) => JSX.Element;
     };
 
     const [conversationList, setConversationList] = useState<
@@ -291,15 +291,8 @@ export default function HomePage() {
         role: 'ai',
         content: summaryText,
         loading: false,
-        typing: false,
-        messageRender: () => (
-          <Typography>
-            <div
-              className='markdown-body'
-              dangerouslySetInnerHTML={{ __html: md.render(summaryText) }}
-            />
-          </Typography>
-        )
+        typing: { step: 3, interval: 14 },
+        messageRender: mdRender
       };
       setConversationList((prev) => [
         ...prev.filter((item) => !item.loading),
@@ -436,10 +429,13 @@ export default function HomePage() {
       setIsSearchOpen(false);
     }
     return (
-      <div className='flex-1 h-full flex flex-col gap-4 border-2  border-indigo-200 boder-solid rounded-2xl p-5'>
-        <div className='flex-1 overflow-y-auto'>
-          <Bubble.List roles={rolesAsObject} items={conversationList} />
-        </div>
+      <div className='flex-1 h-full flex flex-col justify-between gap-4 border-2  border-indigo-200 boder-solid rounded-2xl p-5'>
+        <Bubble.List
+          className='h-[700px] overflow-y-auto'
+          roles={rolesAsObject}
+          items={conversationList}
+          autoScroll
+        />
 
         <div className='flex items-center gap-4'>
           <button
