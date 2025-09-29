@@ -14,22 +14,7 @@ type ApiResponse = {
   text: string;
 };
 
-const stockList = [
-  { value: '000039.SZ', label: '中集集团' },
-  { value: '000042.SZ', label: '中洲控股' },
-  { value: '000045.SZ', label: '深纺织A' },
-  { value: '000048.SZ', label: '京基智农' },
-  { value: '000049.SZ', label: '德赛电池' },
-  { value: '000050.SZ', label: '深天马A' },
-  { value: '000055.SZ', label: '方大集团' },
-  { value: '000056.SZ', label: '皇庭国际' },
-  { value: '000058.SZ', label: '深赛格' },
-  { value: '000059.SZ', label: '华锦股份' },
-  { value: '000060.SZ', label: '中金岭南' },
-  { value: '000061.SZ', label: '农产品' },
-  { value: '000062.SZ', label: '深圳华强' },
-  { value: '000063.SZ', label: '中兴通讯' }
-];
+// 预置股票列表已移除，改用远端搜索
 
 export default function HomePage() {
   async function fetchAgent() {
@@ -158,12 +143,12 @@ export default function HomePage() {
     };
   }
 
-  function mdRender() {
+  function mdRender(content: string) {
     return (
       <Typography>
         <div
           className='markdown-body'
-          dangerouslySetInnerHTML={{ __html: md.render(userPrompt) }}
+          dangerouslySetInnerHTML={{ __html: md.render(content) }}
         />
       </Typography>
     );
@@ -199,13 +184,26 @@ export default function HomePage() {
       content: string;
       loading: boolean;
       messageRender?: () => React.ReactNode;
-      typing: boolean;
+      typing: boolean | { step: number; interval: number };
     };
 
     const [conversationList, setConversationList] = useState<
       ConversationItem[]
     >([]);
     async function submitHandle(value: string) {
+      if (!stock) {
+        setConversationList((prev) => [
+          ...prev,
+          {
+            id: prev.length.toString(),
+            role: 'ai',
+            content: '请先选择一只股票后再发送问题。',
+            loading: false,
+            typing: false
+          }
+        ]);
+        return;
+      }
       setValue('');
       setLoading(true);
       setConversationList((prev) => [
@@ -225,7 +223,7 @@ export default function HomePage() {
           role: 'ai',
           content: '',
           loading: true,
-          typing: true
+          typing: { step: 3, interval: 14 }
         }
       ]);
       const response = await fetch(
@@ -338,10 +336,8 @@ export default function HomePage() {
       }
     };
 
-    const [stock, setStock] = useState<string>('000039.SZ');
-    const [stockName, setStockName] = useState<string>(
-      stockList.find((s) => s.value === '000039.SZ')?.label || ''
-    );
+    const [stock, setStock] = useState<string>('');
+    const [stockName, setStockName] = useState<string>('');
 
     // 搜索 Modal 状态
     const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -450,7 +446,7 @@ export default function HomePage() {
             type='button'
             onClick={openSearch}
             className='px-3 py-2 rounded-md bg-indigo-100 text-indigo-900 border border-indigo-200 hover:bg-indigo-200 w-[220px] text-left'>
-            {stockName ? `${stockName} (${stock})` : '选择股票'}
+            {stockName && stock ? `${stockName} (${stock})` : '请选择股票'}
           </button>
           <Sender
             loading={loading}
@@ -514,7 +510,11 @@ export default function HomePage() {
         <div className='bg-indigo-50 rounded-2xl flex-1 p-5 flex flex-col gap-4 overflow-y-auto'>
           <WelcomeCard />
           {userPrompt && (
-            <Bubble messageRender={mdRender} content={userPrompt} />
+            <Bubble
+              typing={{ step: 3, interval: 14 }}
+              messageRender={mdRender}
+              content={userPrompt}
+            />
           )}
         </div>
         <input type='file' className='hidden' multiple />
